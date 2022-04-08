@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 
+import os
 import cv2
 import mediapipe as mp
 import time
 import multiprocessing
+from pathlib import Path as path
+from pynput import keyboard
 from playsound import playsound
 
 max = lambda a, b: a if a > b else b
@@ -28,9 +31,11 @@ class Rect:
         return f"{{xmin: {self.xmin}, ymin: {self.ymin}, xmax: {self.xmax}, ymax: {self.ymax}}}"
 
 class Crisis:
+    soundfile = os.path.join(path.home(), ".local", "share", "bigbrother", "police.mp3")
+
     def play(self):
         while True:
-            playsound("police.mp3", block=True)
+            playsound(self.soundfile, block=True)
 
     def toggle(self, active):
         if active:
@@ -55,9 +60,20 @@ class BigBrother:
         self.pTime = 0
         self.cTime = 0
         self.isoverlapping = False
+        self.ispaused = False
 
         self.faceRect = None
         self.handsRect = None
+
+        keyboard.Listener(on_press=self.pause, on_release=self.unpause).start()
+
+    def pause(self, key):
+        if key == keyboard.Key.pause and not self.ispaused:
+            self.ispaused = True
+
+    def unpause(self, key):
+        if key == keyboard.Key.pause and self.ispaused:
+            self.ispaused = False
 
     def processface(self):
         xmin = self.w
@@ -120,19 +136,20 @@ class BigBrother:
             if self.handsResult.multi_hand_landmarks:
                 self.processhands()
 
-            if self.handsRect and self.faceRect:
-                tmp = overlaps(self.handsRect, self.faceRect)
-                if tmp != self.isoverlapping:
-                    if tmp:
-                        self.crisis.toggle(True)
-                    else:
-                        self.crisis.toggle(False)
+            if not self.ispaused:
+                if self.handsRect and self.faceRect:
+                    tmp = overlaps(self.handsRect, self.faceRect)
+                    if tmp != self.isoverlapping:
+                        if tmp:
+                            self.crisis.toggle(True)
+                        else:
+                            self.crisis.toggle(False)
 
-                self.isoverlapping = tmp
-            else:
-                if self.isoverlapping:
-                    self.crisis.toggle(False)
-                    self.isoverlapping = False
+                    self.isoverlapping = tmp
+                else:
+                    if self.isoverlapping:
+                        self.crisis.toggle(False)
+                        self.isoverlapping = False
 
             self.cTime = time.time()
             fps = 1 / (self.cTime - self.pTime)
