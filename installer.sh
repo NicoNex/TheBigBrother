@@ -1,6 +1,7 @@
 #!/bin/bash
 
 function install {
+	sudo pip install -r requirements.txt
 	chmod +x bigbrother
 	cp bigbrother $HOME/.local/bin
 	mkdir -p $HOME/.local/share/bigbrother
