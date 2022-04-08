@@ -1,13 +1,43 @@
 #!/usr/bin/env python3
 
+# The Big Brother prevents you from touching your face while you think or relax.
+# Copyright (C) 2022  Nicolò Santamaria
+
+# The Big Brother is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# The Big Brother is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+"""
+The Big Brother
+
+Usage:
+  bigbrother [-s | --suitable-for-work]
+  bigbrother (-h | --help)
+
+Options:
+  -h --help                 Show this help message.
+  -s --suitable-for-work    Uses video output instead of FBI siren.
+"""
+
 import os
 import cv2
 import mediapipe as mp
 import time
-import multiprocessing
+import multiprocessing as multiproc
+import tkinter as tk
 from pathlib import Path as path
 from pynput import keyboard
 from playsound import playsound
+from docopt import docopt
 
 max = lambda a, b: a if a > b else b
 min = lambda a, b: a if a < b else b
@@ -31,22 +61,47 @@ class Rect:
         return f"{{xmin: {self.xmin}, ymin: {self.ymin}, xmax: {self.xmax}, ymax: {self.ymax}}}"
 
 class Crisis:
+    procs = []
     soundfile = os.path.join(path.home(), ".local", "share", "bigbrother", "police.mp3")
 
-    def play(self):
+    def __init__(self, isSFW):
+        self.isSFW = isSFW
+
+    def flickerbg(self, w):
         while True:
-            playsound(self.soundfile, block=True)
+            print("flickerbg")
+            w.configure(bg="blue")
+            time.sleep(0.2)
+            w.configure(bg="red")
+            time.sleep(0.2)
+
+    def run(self):
+        if not self.isSFW:
+            while True:
+                playsound(self.soundfile, block=True)
+        else:
+            w = tk.Tk()
+            w.attributes("-fullscreen", True)
+            w.title("The Big Brother is watching you")
+            # p = multiproc.Process(target=self.flickerbg, args=(w,))
+            # p.start()
+            # self.procs.append(p)
+            w.mainloop()
+
 
     def toggle(self, active):
         if active:
-            self.sound = multiprocessing.Process(target=self.play)
-            self.sound.start()
+            p = multiproc.Process(target=self.run)
+            self.procs.append(p)
+            p.start()
         else:
-            self.sound.terminate()
+            for p in self.procs:
+                p.terminate()
+            self.procs = []
 
 class BigBrother:
-    def __init__(self):
-        self.crisis = Crisis()
+    def __init__(self, isSFW):
+        self.crisis = Crisis(isSFW)
         self.cap = cv2.VideoCapture(0)
 
         self.mpHands = mp.solutions.hands
@@ -160,5 +215,6 @@ class BigBrother:
             cv2.waitKey(1)
 
 if __name__ == "__main__":
-    bb = BigBrother()
+    args = docopt(__doc__)
+    bb = BigBrother(args["--suitable-for-work"])
     bb.watch()
