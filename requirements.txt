@@ -1,6 +1,6 @@
-cv2
+opencv-python
 mediapipe
-tkinter
+tk
 pynput
 playsound
 docopt
