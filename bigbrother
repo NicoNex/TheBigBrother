@@ -69,14 +69,6 @@ class Crisis:
 	def __init__(self, silent):
 		self.silent = silent
 
-	def flickerbg(self, w):
-		while True:
-			print("flickerbg")
-			w.configure(bg="blue")
-			time.sleep(0.2)
-			w.configure(bg="red")
-			time.sleep(0.2)
-
 	def run(self):
 		if not self.silent:
 			while True:
@@ -84,10 +76,7 @@ class Crisis:
 		else:
 			w = tk.Tk()
 			w.attributes("-fullscreen", True)
-			w.title("The Big Brother is watching you")
-			# p = multiproc.Process(target=self.flickerbg, args=(w,))
-			# p.start()
-			# self.procs.append(p)
+			w.title("The Big Brother")
 			w.mainloop()
 
 
