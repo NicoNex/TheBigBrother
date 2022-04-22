@@ -214,9 +214,12 @@ class BigBrother:
 			cv2.waitKey(1)
 
 if __name__ == "__main__":
-	try:
-		args = docopt(__doc__)
-		bb = BigBrother(args["--silent"], args["--debug"])
-		bb.watch()
-	except KeyboardInterrupt:
-		exit("")
+	while True:
+		try:
+			args = docopt(__doc__)
+			bb = BigBrother(args["--silent"], args["--debug"])
+			bb.watch()
+		except KeyboardInterrupt:
+			exit("")
+		except (BrokenPipeError, Xlib.error.ConnectionClosedError):
+			time.sleep(5)
