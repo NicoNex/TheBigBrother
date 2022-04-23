@@ -3,7 +3,8 @@
 function install {
 	sudo pip install -r requirements.txt
 	chmod +x bigbrother
-	cp bigbrother $HOME/.local/bin
+	mkdir -p $HOME/.local/bin
+	cp bigbrother $HOME/.local/bin/
 	mkdir -p $HOME/.local/share/bigbrother
 	cp police.mp3 $HOME/.local/share/bigbrother
 	echo ok
