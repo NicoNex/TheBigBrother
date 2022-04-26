@@ -36,6 +36,8 @@ import mediapipe as mp
 import time
 import multiprocessing as multiproc
 import tkinter as tk
+import threading
+import queue
 from pathlib import Path as path
 from pynput import keyboard
 from playsound import playsound
@@ -93,7 +95,7 @@ class BigBrother:
 	def __init__(self, silent=False, debug=True):
 		self.debug = debug
 		self.alarm = Alarm(silent)
-		self.cap = cv2.VideoCapture(0)
+		# self.cap = cv2.VideoCapture(0)
 
 		self.mpHands = mp.solutions.hands
 		self.hands = self.mpHands.Hands(
@@ -108,6 +110,8 @@ class BigBrother:
 		self.mpDraw = mp.solutions.drawing_utils
 		self.ispaused = False
 
+		self.queue = queue.Queue()
+		threading.Thread(target=self.update_frame).start()
 		keyboard.Listener(on_press=self.pause, on_release=self.unpause).start()
 
 	def pause(self, key):
@@ -117,6 +121,13 @@ class BigBrother:
 	def unpause(self, key):
 		if key == keyboard.Key.pause and self.ispaused:
 			self.ispaused = False
+
+	def update_frame(self):
+		cap = cv2.VideoCapture(0)
+
+		while True:
+			_, frame = cap.read()
+			self.queue.put(frame)
 
 	def process_face(self, img):
 		h, w, _ = img.shape
@@ -180,7 +191,8 @@ class BigBrother:
 			faceRect = None
 			handsRect = None
 
-			_, img = self.cap.read()
+			# _, img = self.cap.read()
+			img = self.queue.get()
 			imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 			
 			self.handsResult = self.hands.process(imgRGB)
