@@ -20,14 +20,23 @@
 The Big Brother
 
 Usage:
-  bigbrother [-s | --silent]
-  bigbrother [-s | --silent] [-d | --debug]
+  bigbrother [options]
   bigbrother (-h | --help)
 
 Options:
-  -h --help     Show this help message.
-  -s --silent   Uses video output instead of FBI siren.
-  -d --debug    Starts a window with the video from the cam.
+  -h --help                    Show this help message.
+  -s --silent                  Uses video output instead of FBI siren.
+  -d --debug                   Starts a window with the video from the cam.
+
+  -F LMS, --face-landmarks LMS Comma separated list of four face landmarks.
+                               Used to draw a custom rectangle on the user's face
+                               and checks whether any hand landmark is contained in it.
+                               They don't need to be the corners of the rectangle.
+
+  -H LMS, --hand-landmarks LMS Comma separated list of hand landmarks.
+                               The Big Brother checks if any of them are contained
+                               in the face rectangle.
+                               If none is specified it checks for all of them.
 """
 
 import os
@@ -41,8 +50,23 @@ from pynput import keyboard
 from playsound import playsound
 from docopt import docopt
 
+WHITE   = (255, 255, 255)
+BLACK   = (0, 0, 0)
+RED     = (255, 0, 0)
+GREEN   = (0, 255, 0)
+BLUE    = (0, 0, 255)
+FUCHSIA = (255, 0, 255)
+
 min = lambda a, b: a if a < b else b
 max = lambda a, b: a if a > b else b
+
+class Dot:
+	def __init__(self, x, y):
+		self.x = x
+		self.y = y
+
+	def __str__(self):
+		return f"{{x: {self.x}, y: {self.y}}}"
 
 class Rect:
 	def __init__(self, xmin, ymin, xmax, ymax):
@@ -58,6 +82,15 @@ class Rect:
 		ymax = min(self.ymax, r.ymax)
 
 		return (max(0, xmax - xmin) * max(0, ymax - ymin)) > 0
+
+	def contains(self, d):
+		return d.x >= self.xmin and d.x <= self.xmax and d.y >= self.ymin and d.y <= self.ymax
+
+	def contains_dots(self, dots):
+		for d in dots:
+			if self.contains(d):
+				return True
+		return False
 
 	def __str__(self):
 		return f"{{xmin: {self.xmin}, ymin: {self.ymin}, xmax: {self.xmax}, ymax: {self.ymax}}}"
@@ -90,8 +123,10 @@ class Alarm:
 			self.procs = []
 
 class BigBrother:
-	def __init__(self, silent=False, debug=True):
+	def __init__(self, silent=False, debug=True, face_landmarks=None, hand_landmarks=None):
 		self.debug = debug
+		self.flms = face_landmarks
+		self.hlms = hand_landmarks
 		self.alarm = Alarm(silent)
 		self.cap = cv2.VideoCapture(0)
 
@@ -100,7 +135,8 @@ class BigBrother:
 			static_image_mode=False, 
 			max_num_hands=2, 
 			min_detection_confidence=0.7, 
-			min_tracking_confidence=0.5)
+			min_tracking_confidence=0.5
+		)
 
 		self.mpFace = mp.solutions.face_mesh
 		self.face = self.mpFace.FaceMesh()
@@ -118,6 +154,17 @@ class BigBrother:
 		if key == keyboard.Key.pause and self.ispaused:
 			self.ispaused = False
 
+	# Renders the face mesh tesselation and the dot indexes.
+	def render_face_landmarks(self, img, height, width):
+		for faceLms in self.faceResult.multi_face_landmarks:
+			self.mpDraw.draw_landmarks(img, faceLms, self.mpFace.FACEMESH_TESSELATION)
+
+			for i, lm in enumerate(faceLms.landmark):
+				x = int(lm.x * width)
+				y = int(lm.y * height)
+				cv2.putText(img, str(i), (x, y), cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 0.3, GREEN, 1)
+
+	# Returns the rectangle containing either all the face landmarks or the provided ones.
 	def process_face(self, img):
 		h, w, _ = img.shape
 		xmin = w
@@ -126,12 +173,10 @@ class BigBrother:
 		ymax = 0
 
 		for faceLms in self.faceResult.multi_face_landmarks:
-			for _, lm in enumerate(faceLms.landmark):
+			lms = [faceLms.landmark[i] for i in self.flms] if self.flms else faceLms.landmark
+			for i, lm in enumerate(lms):
 				x = int(lm.x * w)
 				y = int(lm.y * h)
-
-				if self.debug:
-					cv2.circle(img, (x, y), 5, (100, 100, 0), -1)
 
 				xmax = max(xmax, x)
 				ymax = max(ymax, y)
@@ -139,38 +184,38 @@ class BigBrother:
 				ymin = min(ymin, y)
 
 		if self.debug:
-			cv2.rectangle(img, (xmin, ymin), (xmax, ymax), (0, 255, 0), 2)
-		
+			cv2.rectangle(img, (xmin, ymin), (xmax, ymax), FUCHSIA, 2)
+			self.render_face_landmarks(img, h, w)
+
 		return Rect(xmin, ymin, xmax, ymax)
 
+	# Renders the connections of the hand and the dot indexes.
+	def render_hand_landmarks(self, img, height, width):
+		for handLms in self.handsResult.multi_hand_landmarks:
+			self.mpDraw.draw_landmarks(img, handLms, self.mpHands.HAND_CONNECTIONS)
+
+			for i, lm in enumerate(handLms.landmark):
+				x = int(lm.x * width)
+				y = int(lm.y * height)
+				cv2.putText(img, str(i), (x, y), cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 0.5, GREEN, 1)
+
+
+	# Computes the hand landmarks and returns their corresponding coordinates.
 	def process_hands(self, img):
 		h, w, _ = img.shape
-		xmin = w
-		ymin = h
-		xmax = 0
-		ymax = 0
 
+		dots = []
 		for handLms in self.handsResult.multi_hand_landmarks:
-			for _, lm in enumerate(handLms.landmark):
-				x = int(lm.x * w)
-				y = int(lm.y * h)
-
-				if self.debug:
-					cv2.circle(img, (x, y), 3, (255, 0, 255), cv2.FILLED)
-
-				xmax = max(xmax, x)
-				ymax = max(ymax, y)
-				xmin = min(xmin, x)
-				ymin = min(ymin, y)
-
-			if self.debug:
-				self.mpDraw.draw_landmarks(img, handLms, self.mpHands.HAND_CONNECTIONS)
+			lms = [handLms.landmark[i] for i in self.hlms] if self.hlms else handLms.landmark
+			for _, lm in enumerate(lms):
+				dots.append(Dot(int(lm.x * w), int(lm.y * h)))
 
 		if self.debug:
-			cv2.rectangle(img, (xmin, ymin), (xmax, ymax), (0, 0, 255), 2)
+			self.render_hand_landmarks(img, h, w)
 
-		return Rect(xmin, ymin, xmax, ymax)
+		return dots
 
+	# watch is the application main loop.
 	def watch(self):
 		pTime = 0
 		cTime = 0
@@ -178,7 +223,7 @@ class BigBrother:
 
 		while True:
 			faceRect = None
-			handsRect = None
+			handDots = None
 
 			_, img = self.cap.read()
 			imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -190,11 +235,11 @@ class BigBrother:
 				faceRect = self.process_face(img)
 
 			if self.handsResult.multi_hand_landmarks:
-				handsRect = self.process_hands(img)
+				handDots = self.process_hands(img)
 
 			if not self.ispaused:
-				if handsRect and faceRect:
-					tmp = handsRect.overlaps(faceRect)
+				if handDots and faceRect:
+					tmp = faceRect.contains_dots(handDots)
 					if tmp != isoverlapping:
 						self.alarm.toggle(tmp)
 
@@ -208,18 +253,25 @@ class BigBrother:
 				cTime = time.time()
 				fps = 1 / (cTime - pTime)
 				pTime = cTime
-				cv2.putText(img, str(int(fps)), (10, 70), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 255), 3)
+				cv2.putText(img, str(int(fps)), (10, 70), cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 3, FUCHSIA, 3)
 				cv2.imshow("The Big Brother", img)
 
 			cv2.waitKey(1)
 
 if __name__ == "__main__":
+	landmarks = lambda s: [int(val) for val in s.split(",")] if s else None
+
 	while True:
 		try:
 			args = docopt(__doc__)
-			bb = BigBrother(args["--silent"], args["--debug"])
+			bb = BigBrother(
+				silent         = args["--silent"],
+				debug          = args["--debug"],
+				face_landmarks = landmarks(args["--face-landmarks"]),
+				hand_landmarks = landmarks(args["--hand-landmarks"])
+			)
 			bb.watch()
 		except KeyboardInterrupt:
 			exit("")
-		except (BrokenPipeError, Xlib.error.ConnectionClosedError):
+		except BrokenPipeError:
 			time.sleep(5)
