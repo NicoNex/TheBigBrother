@@ -49,6 +49,7 @@ from pathlib import Path as path
 from pynput import keyboard
 from playsound import playsound
 from docopt import docopt
+from sys import platform
 
 WHITE   = (255, 255, 255)
 BLACK   = (0, 0, 0)
@@ -57,8 +58,6 @@ GREEN   = (0, 255, 0)
 BLUE    = (0, 0, 255)
 FUCHSIA = (255, 0, 255)
 
-min = lambda a, b: a if a < b else b
-max = lambda a, b: a if a > b else b
 
 class Dot:
 	def __init__(self, x, y):
@@ -97,7 +96,13 @@ class Rect:
 
 class Alarm:
 	procs = []
-	soundfile = os.path.join(path.home(), ".local", "share", "bigbrother", "police.mp3")
+	if "linux" in platform.lower():
+		soundfile = os.path.join(path.home(), ".local", "share", "bigbrother", "police.mp3")
+	elif "win" in platform.lower():
+		# this uses replace because it's bugged on windows
+		# https://stackoverflow.com/questions/68861878/error-cannot-specify-extra-characters-after-a-string-enclosed-in-quotation-mark
+		soundfile = path(os.path.join(os.environ.get("LOCALAPPDATA"), "BigBrother", "sounds", "police.mp3"))
+		soundfile = f'\"{soundfile}\"'
 
 	def __init__(self, silent):
 		self.silent = silent
@@ -129,7 +134,7 @@ class BigBrother:
 		self.hlms = hand_landmarks
 		self.alarm = Alarm(silent)
 		self.cap = cv2.VideoCapture(0)
-
+		
 		self.mpHands = mp.solutions.hands
 		self.hands = self.mpHands.Hands(
 			static_image_mode=False, 
