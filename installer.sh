@@ -1,12 +1,13 @@
 #!/bin/bash
 
 function install {
-	sudo pip install -r requirements.txt
 	chmod +x bigbrother
 	mkdir -p $HOME/.local/bin
 	cp bigbrother $HOME/.local/bin/
 	mkdir -p $HOME/.local/share/bigbrother
 	cp police.mp3 $HOME/.local/share/bigbrother
+	python -m venv $HOME/.local/share/bigbrother/venv
+	pip install -r requirements.txt
 	echo ok
 }
 
